@@ -7,21 +7,28 @@ const app = express();
 const PORT = 5050;
 const TARGET = 'https://aws-stage.wecasa.fr';
 
-const configuration = {
-  user: { isMocked: true, filename: 'user.json', statusCode: 200 },
-  universes: { isMocked: true, filename: 'universes.json', statusCode: 200 },
-  config: { isMocked: true, filename: 'config.json', statusCode: 200 },
-};
+const mocks = [
+  { path: '/api/v1/universes', file: 'universes.json', status: 200, enabled: true },
+  { path: '/api/v1/config', file: 'config.json', status: 200, enabled: true },
+  { path: '/api/v1/user', file: 'user-signed-in.json', status: 200, enabled: true },
+  { path: '/api/v1/prestations', file: 'prestations.json', status: 200, enabled: true },
+  {
+    path: '/api/v1/customer/previous_addresses',
+    file: 'previous_addresses.json',
+    status: 200,
+    enabled: true,
+  },
+];
 
 // Helper pour lire les fichiers JSON mockés
-const readMockFile = (filename, statusCode, path, res) => {
-  const filePath = require('path').join(__dirname, 'data', filename);
+const readMockFile = (filename, statusCode, routePath, res) => {
+  const filePath = path.join(__dirname, 'data', filename);
   fs.readFile(filePath, 'utf8', (err, data) => {
     if (err) {
       console.error(`[LOCAL] Error reading ${filename}:`, err);
       return res.status(500).json({ error: 'Failed to read local data' });
     }
-    console.log(`[LOCAL] ✓ GET ${path} - ${statusCode}`);
+    console.log(`[LOCAL] ✓ GET ${routePath} - ${statusCode}`);
     res.status(statusCode).json(JSON.parse(data));
   });
 };
@@ -41,42 +48,22 @@ app.use((req, res, next) => {
   next();
 });
 
-// Routes OPTIONS (CORS preflight)
-app.options('/api/v1/universes', (req, res, next) => {
-  if (!configuration.universes.isMocked) return next();
-  console.log('[LOCAL] ✓ OPTIONS /api/v1/universes - 200');
-  res.status(200).end();
-});
+const registerMockRoutes = (appInstance, mockList) => {
+  for (const mock of mockList) {
+    appInstance.options(mock.path, (req, res, next) => {
+      if (!mock.enabled) return next();
+      console.log(`[LOCAL] ✓ OPTIONS ${mock.path} - 200`);
+      res.status(200).end();
+    });
 
-app.options('/api/v1/config', (req, res, next) => {
-  if (!configuration.config.isMocked) return next();
-  console.log('[LOCAL] ✓ OPTIONS /api/v1/config - 200');
-  res.status(200).end();
-});
+    appInstance.get(mock.path, (req, res, next) => {
+      if (!mock.enabled) return next();
+      readMockFile(mock.file, mock.status, mock.path, res);
+    });
+  }
+};
 
-app.options('/api/v1/user', (req, res, next) => {
-  if (!configuration.user.isMocked) return next();
-  console.log('[LOCAL] ✓ OPTIONS /api/v1/user - 200');
-  res.status(200).end();
-});
-
-// Route locale pour /api/v1/universes
-app.get('/api/v1/universes', (req, res, next) => {
-  if (!configuration.universes.isMocked) return next();
-  readMockFile('universes.json', configuration.universes.statusCode, '/api/v1/universes', res);
-});
-
-// Route locale pour /api/v1/config
-app.get('/api/v1/config', (req, res, next) => {
-  if (!configuration.config.isMocked) return next();
-  readMockFile('config.json', configuration.config.statusCode, '/api/v1/config', res);
-});
-
-// Route locale pour /api/v1/user
-app.get('/api/v1/user', (req, res, next) => {
-  if (!configuration.user.isMocked) return next();
-  readMockFile('user.json', configuration.user.statusCode, '/api/v1/user', res);
-});
+registerMockRoutes(app, mocks);
 
 const proxyMiddleware = createProxyMiddleware({
   target: TARGET,
@@ -90,7 +77,7 @@ const proxyMiddleware = createProxyMiddleware({
     proxyRes: (proxyRes, req, res) => {
       const duration = Date.now() - (req['startTime'] || Date.now());
       console.log(
-        `[PROXY] ✓ ${req.method} ${TARGET}${req.originalUrl} - ${proxyRes.statusCode} (${duration}ms)`
+        `[PROXY] ✓ ${req.method} ${TARGET}${req.originalUrl} - ${proxyRes.statusCode} (${duration}ms)`,
       );
     },
     error: (err, req, res) => {
