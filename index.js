@@ -8,9 +8,23 @@ const PORT = 5050;
 const TARGET = 'https://aws-stage.wecasa.fr';
 
 const mocks = [
+  {
+    enabled: true,
+    file: 'create_with_token_not_with_valid_data.json',
+    method: 'POST',
+    path: '/api/v1/user/create_with_token',
+    status: 422,
+  },
   { path: '/api/v1/universes', file: 'universes.json', status: 200, enabled: true },
   { path: '/api/v1/config', file: 'config.json', status: 200, enabled: true },
-  { path: '/api/v1/user', file: 'user-signed-in.json', status: 200, enabled: true },
+  {
+    enabled: true,
+    file: 'user-post.json',
+    method: 'POST',
+    path: '/api/v1/user',
+    status: 200,
+  },
+  { path: '/api/v1/user', file: 'user-signed-in.json', status: 401, enabled: true },
   { path: '/api/v1/prestations', file: 'prestations.json', status: 200, enabled: true },
   {
     path: '/api/v1/customer/previous_addresses',
@@ -21,14 +35,14 @@ const mocks = [
 ];
 
 // Helper pour lire les fichiers JSON mockés
-const readMockFile = (filename, statusCode, routePath, res) => {
+const readMockFile = (filename, statusCode, routePath, res, method = 'GET') => {
   const filePath = path.join(__dirname, 'data', filename);
   fs.readFile(filePath, 'utf8', (err, data) => {
     if (err) {
       console.error(`[LOCAL] Error reading ${filename}:`, err);
       return res.status(500).json({ error: 'Failed to read local data' });
     }
-    console.log(`[LOCAL] ✓ GET ${routePath} - ${statusCode}`);
+    console.log(`[LOCAL] ✓ ${method} ${routePath} - ${statusCode}`);
     res.status(statusCode).json(JSON.parse(data));
   });
 };
@@ -50,15 +64,17 @@ app.use((req, res, next) => {
 
 const registerMockRoutes = (appInstance, mockList) => {
   for (const mock of mockList) {
+    const method = (mock.method || 'GET').toLowerCase();
+
     appInstance.options(mock.path, (req, res, next) => {
       if (!mock.enabled) return next();
       console.log(`[LOCAL] ✓ OPTIONS ${mock.path} - 200`);
       res.status(200).end();
     });
 
-    appInstance.get(mock.path, (req, res, next) => {
+    appInstance[method](mock.path, (req, res, next) => {
       if (!mock.enabled) return next();
-      readMockFile(mock.file, mock.status, mock.path, res);
+      readMockFile(mock.file, mock.status, mock.path, res, (mock.method || 'GET').toUpperCase());
     });
   }
 };
